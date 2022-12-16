@@ -1,0 +1,17 @@
+只有一个线程时，put和get均同时只有一个线程进行。
+当线程数大于1时，在main函数中这些线程会首先同时执行put_thread。这个过程中，
+可能会有两个以上线程在同一时刻执行put，并且需要索引的值key % NBUCKET相同，即落入了哈希表的同一个bucket中。
+记此时两个进程1,2同时进入put，索引为key1,key2(key1 % NBUCKET = key2 % NBUCKET)，而这两个索引又恰好都没有存在于哈希表中，则都需要调用insert函数。
+进程1,2同时进入insert，先后执行完前4句指令：
+    struct entry *e = malloc(sizeof(struct entry));
+    e->key = key;
+    e->value = value;
+    e->next = n;
+目前为止都没有问题。直到下一句临界区的写入：
+    *p = e;
+这一句将这个bucket(table[key % NBUCKET])的头指针指向新增的项e。
+那么进程1,2不论谁先执行完这一句，都会使得另一个进程新增的项被丢弃。
+不妨设进程1先执行，则e2被丢弃，因为头指针并不指向它——事实上在table[key % NBUCKET]这个链表中e2前驱节点，
+将来在get中遍历链表查询时，则不会找到e2。
+
+所有的put之执行完后，多个线程执行get是没有问题的——不涉及在临界区的写入。但是由于put时丢弃了大量的项，故会产生很多missing。

@@ -30,14 +30,14 @@ struct thread_context {
 };
 
 struct thread {
-  struct thread_context context;
   char                  stack[STACK_SIZE]; /* the thread's stack */
   int                   state;             /* FREE, RUNNING, RUNNABLE */
+  struct thread_context context;
 };
 struct thread all_thread[MAX_THREAD];
 struct thread *current_thread;
 extern void thread_switch(uint64, uint64);
-              
+
 void 
 thread_init(void)
 {
@@ -50,11 +50,19 @@ thread_init(void)
   current_thread->state = RUNNING;
 }
 
+// static void debug(char *title) {
+//   printf("%s:\t", title);
+//   for (int i = 0; i < MAX_THREAD; i++) {
+//     printf("\t(%d) %d", i, all_thread[i].state);
+//   }
+//   printf("\n");
+// }
+
 void 
 thread_schedule(void)
 {
   struct thread *t, *next_thread;
-
+  // debug("thread_schedule");
   /* Find another runnable thread. */
   next_thread = 0;
   t = current_thread + 1;
@@ -67,6 +75,7 @@ thread_schedule(void)
     }
     t = t + 1;
   }
+  
 
   if (next_thread == 0) {
     printf("thread_schedule: no runnable threads\n");
@@ -82,7 +91,6 @@ thread_schedule(void)
      * thread_switch(??, ??);
      */
     thread_switch((uint64) &t->context, (uint64) &current_thread->context);
-    
   } else
     next_thread = 0;
 }
@@ -100,6 +108,8 @@ thread_create(void (*func)())
   memset(&t->context, 0, sizeof(struct thread_context));
   t->context.ra = (uint64) func;
   t->context.sp = (uint64) &t->stack[STACK_SIZE - 1];
+  // t->context.sp = (uint64) t->stack - 1024;
+  // t->context.sp = (uint64) t->stack + 297;
 }
 
 void 
@@ -177,6 +187,10 @@ main(int argc, char *argv[])
 {
   a_started = b_started = c_started = 0;
   a_n = b_n = c_n = 0;
+  for (int i = 0; i < MAX_THREAD; i++) {
+    struct thread* t = &all_thread[i];
+    printf("(%d) stack: %p, state: %p, context: %p\n", t - all_thread, &t->stack, &t->state, &t->context);
+  }
   thread_init();
   thread_create(thread_a);
   thread_create(thread_b);
