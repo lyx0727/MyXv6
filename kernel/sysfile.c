@@ -301,6 +301,26 @@ create(char *path, short type, short major, short minor)
   return 0;
 }
 
+// Caller must hold ip's lock
+// If ip has next link, will call iput(ip), replace ip with next one
+// return ip if ip is not a symlink
+// return 0 if linked path doesn't exist  
+static int
+next_symlink(struct inode **ip)
+{
+  if (*ip == 0) return -1;
+  char path[MAXPATH];
+  if ((*ip)->type != T_SYMLINK || readi(*ip, 0, (uint64)path, 0, MAXPATH) < 0) { 
+    // got it
+    iunlock(*ip);
+    return 0;
+  }
+  struct inode* t = namei(path);
+  iunlockput(*ip);
+  *ip = t;
+  return t == 0 ? -1 : 1;
+}
+
 uint64
 sys_open(void)
 {
@@ -339,6 +359,51 @@ sys_open(void)
     iunlockput(ip);
     end_op();
     return -1;
+  }
+
+  // open a symlink
+  if (ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0) {
+    struct inode *slow, *fast;
+    int cycle_flag = 1;
+    int r;
+    slow = idup(ip);
+    fast = idup(ip);
+    iunlockput(ip);
+    while (1) {
+      ilock(slow);
+      if ((r = next_symlink(&slow)) > 0) {
+      } else if (r == -1) { // doesn't exist
+        if (fast) iput(fast);
+        end_op();
+        return -1;
+      } else { // got it!
+        ip = slow;
+        ilock(ip);
+        cycle_flag = 0;
+        break;
+      }
+      for (int __ = 0; __ < 2; __++) {
+        if (fast) {
+          ilock(fast);
+          r = next_symlink(&fast);
+          if (r <= 0) {
+            // fast pointer arrive at end
+            if (r == 0) iput(fast);
+            fast = 0;
+          }
+        }
+      }
+      if (fast && fast->inum == slow->inum) {
+        // has a cycle
+        break;
+      }
+    }
+    if (cycle_flag) {
+      if (slow) iput(slow);
+      if (fast) iput(fast);
+      end_op();
+      return -1;
+    }
   }
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
@@ -501,5 +566,28 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void) 
+{
+  char target[MAXPATH], path[MAXPATH];
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0) {
+    return -1;
+  }
+  begin_op();
+  struct inode *ip;
+  // create inode for path
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+
+  // write the target path to the inode
+  writei(ip, 0, (uint64)target, 0, MAXPATH);
+
+  iunlockput(ip);
+  end_op();
   return 0;
 }

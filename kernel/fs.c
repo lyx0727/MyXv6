@@ -462,8 +462,10 @@ _trunc_recursive(uint dev, uint *addr, int recursive_count) {
     }
     brelse(bp);
   }
-  bfree(dev, *addr);
-  *addr = 0;
+  if (*addr) {
+    bfree(dev, *addr);
+    *addr = 0;
+  }
 }
 
 // Truncate inode (discard contents).
@@ -472,17 +474,17 @@ void
 itrunc(struct inode *ip)
 {
   int i;
-  for(i = 0; i < NDIRECT; i++){
-    if(ip->addrs[i]){
+  for (i = 0; i < NDIRECT; i++) {
+    if (ip->addrs[i]) {
       _trunc_recursive(ip->dev, &ip->addrs[i], 0);
     }
   }
 
-  if(ip->addrs[NDIRECT]){
+  if (ip->addrs[NDIRECT]) {
     _trunc_recursive(ip->dev, &ip->addrs[NDIRECT], 1);
   }
 
-  if(ip->addrs[NDIRECT + 1]){
+  if (ip->addrs[NDIRECT + 1]) {
     _trunc_recursive(ip->dev, &ip->addrs[NDIRECT + 1], 2);
   }
 
